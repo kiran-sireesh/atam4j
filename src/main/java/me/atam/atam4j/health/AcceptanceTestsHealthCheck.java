@@ -1,7 +1,11 @@
 package me.atam.atam4j.health;
 
 import com.codahale.metrics.health.HealthCheck;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.runner.notification.Failure;
+
+import java.util.Optional;
 
 public class AcceptanceTestsHealthCheck extends HealthCheck {
 
@@ -13,6 +17,8 @@ public class AcceptanceTestsHealthCheck extends HealthCheck {
 
     public static final String NAME = "Acceptance Tests HealthCheck";
 
+    private final ObjectMapper mapper = new ObjectMapper();
+
     public AcceptanceTestsHealthCheck(AcceptanceTestsState acceptanceTestsState) {
         testsState = acceptanceTestsState;
     }
@@ -23,16 +29,28 @@ public class AcceptanceTestsHealthCheck extends HealthCheck {
             if (testsState.getResult().get().wasSuccessful()) {
                 return AcceptanceTestsHealthCheck.Result.healthy(OK_MESSAGE);
             } else {
-                StringBuilder messageBuilder = new StringBuilder();
-                messageBuilder.append(String.format(FAILURE_MESSAGE + " %d.", testsState.getResult().get().getFailureCount()));
-                for (Failure failure : testsState.getResult().get().getFailures()) {
-                    messageBuilder.append(" ");
-                    messageBuilder.append(failure.getMessage());
-                }
-                return AcceptanceTestsHealthCheck.Result.unhealthy(messageBuilder.toString());
+                return AcceptanceTestsHealthCheck.Result.unhealthy(getTestRunReport());
             }
         } else {
             return AcceptanceTestsHealthCheck.Result.healthy(TOO_EARLY_MESSAGE);
         }
+    }
+
+
+    private String getTestRunReport() {
+        Optional<org.junit.runner.Result> testResultOpt = testsState.getResult();
+        if(testResultOpt.isPresent()) {
+            TestRunReport testRunReport = new TestRunReport(
+                    testResultOpt.get().getFailureCount(),
+                    testResultOpt.get().getRunCount(),
+                    testResultOpt.get().getFailures()
+            );
+            try {
+                return mapper.writeValueAsString(testRunReport);
+            } catch (JsonProcessingException e) {
+                return "Exception in generating test run report" + e.getMessage();
+            }
+        }
+        return "Test Result is empty";
     }
 }
